@@ -172,7 +172,7 @@ class _MideaFlow(FlowHandler):
         self._client: MideaClient | None = None
         self.cloud: MideaCloud | None = None  # type: ignore
         self.conf = {}
-        self.config_entry: ConfigEntry | None = None
+        self._config_entry: ConfigEntry | None = None
         self.devices_conf: list[dict[str, Any]] = []
         self.discovered_appliances: list[LanDevice | None] = []
         self.error_cause: str = ""
@@ -296,14 +296,14 @@ class _MideaFlow(FlowHandler):
 
         # Remove not used elements
         self.conf.pop(CONF_ADVANCED_SETTINGS, None)
-        if self.config_entry:
+        if self._config_entry:
             _LOGGER.debug("Updating configuration data %s", RedactedConf(self.conf))
             self.hass.config_entries.async_update_entry(
-                entry=self.config_entry, data=self.conf
+                entry=self._config_entry, data=self.conf
             )
             # Reload the config entry otherwise devices will remain unavailable
             self.hass.async_create_task(
-                self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                self.hass.config_entries.async_reload(self._config_entry.entry_id)
             )
 
         if not self.devices_conf:
@@ -476,7 +476,7 @@ class MideaConfigFlow(ConfigFlow, _MideaFlow, domain=DOMAIN):
         super().__init__()
         self.discovered_appliances: list[LanDevice | None] = []
         self.appliances: list[LanDevice] = []
-        self.config_entry: ConfigEntry | None = None
+        self._config_entry: ConfigEntry | None = None
         self.advanced_settings = False
 
     @staticmethod
@@ -485,7 +485,7 @@ class MideaConfigFlow(ConfigFlow, _MideaFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Define the config flow to handle options."""
-        return MideaOptionsFlow(config_entry)
+        return MideaOptionsFlow()
 
     def _connect_and_discover(self: MideaConfigFlow) -> None:
         """Validates that cloud credentials are valid and discovers local appliances"""
@@ -625,7 +625,7 @@ class MideaConfigFlow(ConfigFlow, _MideaFlow, domain=DOMAIN):
 
     async def _async_add_entry(self) -> FlowResult:
         assert self.conf is not None
-        self.config_entry = await self.async_set_unique_id(self.conf[CONF_USERNAME])
+        self._config_entry = await self.async_set_unique_id(self.conf[CONF_USERNAME])
         return await super()._async_add_entry()
 
     async def async_step_reauth(self, config) -> FlowResult:
@@ -674,17 +674,16 @@ class MideaConfigFlow(ConfigFlow, _MideaFlow, domain=DOMAIN):
 class MideaOptionsFlow(OptionsFlow, _MideaFlow):
     """Handle Midea options flow."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize Midea options flow."""
-        super().__init__()
-        self.config_entry = config_entry
-        self.conf = {**config_entry.data}
-        self.devices_conf = self.conf.get(CONF_DEVICES, [])
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Starts options flow"""
+        if self._config_entry is None:
+            # config_entry is a read-only property provided by the flow manager,
+            # so the entry can only be read once the flow has been started.
+            self._config_entry = self.config_entry
+            self.conf = {**self._config_entry.data}
+            self.devices_conf = self.conf.get(CONF_DEVICES, [])
         self._build_appliance_list()
         return await self.async_step_appliance(user_input)
 
@@ -699,8 +698,8 @@ class MideaOptionsFlow(OptionsFlow, _MideaFlow):
         )
 
     def _build_appliance_list(self) -> None:
-        assert self.config_entry
-        hub: Hub = self.hass.data[DOMAIN][self.config_entry.entry_id]
+        assert self._config_entry
+        hub: Hub = self.hass.data[DOMAIN][self._config_entry.entry_id]
         self.appliances.clear()
         self.devices_conf = self.conf[CONF_DEVICES]
         for device in self.devices_conf:
