@@ -95,6 +95,8 @@ class ApplianceDiscoveryHelper:  # pylint: disable=too-many-instance-attributes
         dev_confs = self.hub.config[CONF_DEVICES]
         for new in self.new_devices:
             for known in dev_confs:
+                if known[CONF_UNIQUE_ID] != new.serial_number:
+                    continue
                 if self._admitted_known_device(known, new):
                     need_reload = True
                 break
@@ -107,7 +109,7 @@ class ApplianceDiscoveryHelper:  # pylint: disable=too-many-instance-attributes
         return need_reload
 
     def _admit_not_known_device(self, new: LanDevice) -> dict[str, Any]:
-        name = f"{new.model} {new.mac[-4] if new.mac else new.serial_number}"
+        name = f"{new.model} {new.mac[-4:] if new.mac else new.serial_number}"
         new_device = {
             CONF_DISCOVERY: DISCOVERY_IGNORE,
             CONF_API_VERSION: new.version,
